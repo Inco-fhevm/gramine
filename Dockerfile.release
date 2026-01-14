@@ -1,0 +1,65 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update
+# Install Gramine build dependencies
+# From https://gramine.readthedocs.io/en/stable/devel/building.html
+RUN apt-get install -y \
+    build-essential \
+    autoconf \
+    bison \
+    gawk \
+    meson \
+    nasm \
+    pkg-config \
+    python3 \
+    python3-click \
+    python3-jinja2 \
+    python3-pyelftools \
+    python3-tomli \
+    python3-tomli-w \
+    python3-voluptuous \
+    wget 
+
+# Install SGX SDK and PSW dependencies
+# From https://github.com/intel/confidential-computing.sgx?tab=readme-ov-file#install-the-intelr-sgx-sdk
+RUN apt-get install -y \
+    cmake \
+    libprotobuf-c-dev \
+    protobuf-c-compiler \
+    protobuf-compiler \
+    python3-cryptography \
+    python3-pip \
+    python3-protobuf \
+    python-is-python3 \
+    libssl-dev \
+    libcurl4-openssl-dev \
+    libprotobuf-dev \
+    curl
+
+RUN curl -fsSLo /usr/share/keyrings/intel-sgx-deb.key https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key && \
+    echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/intel-sgx-deb.key] https://download.01.org/intel-sgx/sgx_repo/ubuntu noble main' > /etc/apt/sources.list.d/intel-sgx.list
+
+RUN apt-get update
+# RUN apt-get install -y libsgx-quote-ex libsgx-dcap-ql libsgx-dcap-default-qpl
+
+# Instal SGX SDK
+RUN wget https://download.01.org/intel-sgx/latest/linux-latest/distro/ubuntu24.04-server/sgx_linux_x64_sdk_2.27.100.1.bin -O sgx_linux_x64_driver.bin && \
+    chmod +x sgx_linux_x64_driver.bin && \
+    ./sgx_linux_x64_driver.bin --prefix /opt/intel
+
+RUN apt-get install -y libsgx-quote-ex libsgx-urts libsgx-dcap-ql libsgx-dcap-quote-verify-dev 
+
+
+# libsgx-enclave-common-dev libsgx-dcap-ql-dev libsgx-dcap-default-qpl-dev
+
+COPY . /gramine
+WORKDIR /gramine
+RUN meson setup build/ --buildtype=release -Ddirect=enabled -Dsgx=enabled --werror 
+RUN chmod +x /gramine/subprojects/mbedtls-3.6.3/compile.sh
+RUN ninja -C build/
+RUN ninja -C build/ install
+RUN chmod +x /usr/local/bin/gramine-manifest
+RUN chmod +x /usr/local/bin/gramine-manifest-check
+RUN chmod +x /usr/local/bin/gramine-sgx-sign
+RUN chmod +x /usr/local/bin/gramine-sgx-gen-private-key
