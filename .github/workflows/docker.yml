@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - gh-action-test # temporary branch for testing docker builds
     tags:
       - "v*"
 
