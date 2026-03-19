@@ -75,9 +75,6 @@ RUN apt-get install -y \
     libsgx-dcap-ql=1.25.100.1-noble1 \
     libsgx-dcap-quote-verify-dev=1.25.100.1-noble1 
 
-
-# libsgx-enclave-common-dev libsgx-dcap-ql-dev libsgx-dcap-default-qpl-dev
-
 COPY . /gramine
 WORKDIR /gramine
 RUN meson setup build/ --buildtype=release -Dsgx=enabled -Ddcap=enabled --werror 
