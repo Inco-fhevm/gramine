@@ -1,0 +1,15 @@
+name: Use Nix
+description: Install Nix using pinned install-nix-action
+
+inputs:
+  github-access-token:
+    description: GitHub token used by install-nix-action
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install Nix
+      uses: cachix/install-nix-action@4e002c8ec80594ecd40e759629461e26c8abed15 # v31
+      with:
+        github_access_token: ${{ inputs.github-access-token }}
