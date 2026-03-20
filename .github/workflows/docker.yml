@@ -60,6 +60,6 @@ jobs:
               --tag "$IMAGE_TAG" \
               --cache-from "type=gha,scope=$CACHE_SCOPE" \
               --cache-to "type=gha,mode=max,scope=$CACHE_SCOPE" \
-              -- push \
+              --push \
               .
           '
