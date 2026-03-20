@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - master
-    tags:
-      - "v*"
 
 env:
   DOCKERHUB_USERNAME: inconetwork
@@ -29,13 +27,13 @@ jobs:
         with:
           github-access-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # - name: Login to Docker Hub
-      #   env:
-      #     DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
-      #   run: |
-      #     nix develop -c bash -lc '
-      #       echo "$DOCKERHUB_PASSWORD" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
-      #     '
+      - name: Login to Docker Hub
+        env:
+          DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
+        run: |
+          nix develop -c bash -lc '
+            echo "$DOCKERHUB_PASSWORD" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+          '
 
       - name: Set up Docker Buildx
         run: |
@@ -61,5 +59,6 @@ jobs:
               --tag "$IMAGE_TAG" \
               --cache-from "type=gha,scope=$CACHE_SCOPE" \
               --cache-to "type=gha,mode=max,scope=$CACHE_SCOPE" \
+              --push \
               .
           '
