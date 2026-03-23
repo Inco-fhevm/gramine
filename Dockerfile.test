@@ -1,0 +1,94 @@
+FROM ubuntu:24.04@sha256:d1e2e92c075e5ca139d51a140fff46f84315c0fdce203eab2807c7e495eff4f9
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Ubuntu snapshot chosen for reproducibility and consistency across components.
+# Update this value as needed to match the desired system package versions.
+ARG UBUNTU_SNAPSHOT=20260310T000000Z
+
+# Bootstrap ca-certificates from the snapshot via HTTP (no TLS needed), then switch to HTTPS.
+# This is necessary because the base image may have an outdated ca-certificates package that 
+# cannot validate the current Let's Encrypt root certificates used by snapshot.ubuntu.com.
+# Malicious attacker that compromises the network can serve malicious ca-certificates package.
+# But APT still verifies the GPG signature of packages regardless of HTTP/HTTPS — a tampered .deb 
+# would fail signature verification unless the attacker also controls Ubuntu's signing key.
+RUN printf "deb http://snapshot.ubuntu.com/ubuntu/%s noble main restricted universe\n\
+deb http://snapshot.ubuntu.com/ubuntu/%s noble-updates main restricted universe\n\
+deb http://snapshot.ubuntu.com/ubuntu/%s noble-security main restricted universe\n" \
+    "${UBUNTU_SNAPSHOT}" "${UBUNTU_SNAPSHOT}" "${UBUNTU_SNAPSHOT}" \
+    > /etc/apt/sources.list.d/bootstrap.list && \
+    apt-get update && \
+    apt-get install -y ca-certificates=20240203 && \
+    rm /etc/apt/sources.list.d/bootstrap.list
+
+
+# Point APT to a fixed Ubuntu snapshot for reproducible installs
+RUN echo "APT::Snapshot \"${UBUNTU_SNAPSHOT}\";" | tee /etc/apt/apt.conf.d/50snapshot
+
+# Re-run update using HTTPS snapshot now that ca-certificates is installed
+RUN apt-get update
+
+RUN apt-get install -y \
+    build-essential=12.10ubuntu1 \
+    autoconf=2.71-3 \
+    bison=2:3.8.2+dfsg-1build2 \
+    gawk=1:5.2.1-2build3 \
+    meson=1.3.2-1ubuntu1 \
+    nasm=2.16.01-1build1 \
+    pkg-config=1.8.1-2build1 \
+    python3=3.12.3-0ubuntu2.1 \
+    python3-click=8.1.6-2 \
+    python3-jinja2=3.1.2-1ubuntu1.3 \
+    python3-pyelftools=0.30-1 \
+    python3-tomli=2.0.1-2 \
+    python3-tomli-w=1.0.0-2 \
+    python3-voluptuous=0.14.2-1 \
+    wget=1.21.4-1ubuntu4.1 
+
+# Install SGX SDK and PSW dependencies
+# From https://github.com/intel/confidential-computing.sgx?tab=readme-ov-file#install-the-intelr-sgx-sdk
+RUN apt-get install -y \
+    cmake=3.28.3-1build7 \
+    libprotobuf-c-dev=1.4.1-1ubuntu4 \
+    protobuf-c-compiler=1.4.1-1ubuntu4 \
+    protobuf-compiler=3.21.12-8.2ubuntu0.3 \
+    python3-cryptography=41.0.7-4ubuntu0.1 \
+    python3-pip=24.0+dfsg-1ubuntu1.3 \
+    python3-protobuf=3.21.12-8.2ubuntu0.3 \
+    python-is-python3=3.11.4-1 \
+    libssl-dev=3.0.13-0ubuntu3.7 \
+    libcurl4-openssl-dev=8.5.0-2ubuntu10.7 \
+    libprotobuf-dev=3.21.12-8.2ubuntu0.3 \
+    curl=8.5.0-2ubuntu10.7 
+
+RUN curl -fsSLo /usr/share/keyrings/intel-sgx-deb.key https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key && \
+    echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/intel-sgx-deb.key] https://download.01.org/intel-sgx/sgx_repo/ubuntu noble main' > /etc/apt/sources.list.d/intel-sgx.list
+RUN apt-get update
+
+# Instal SGX SDK
+RUN wget https://download.01.org/intel-sgx/sgx-linux/2.28/distro/ubuntu24.04-server/sgx_linux_x64_sdk_2.28.100.1.bin -O sgx_linux_x64_sdk.bin && \
+    chmod +x sgx_linux_x64_sdk.bin && \
+    ./sgx_linux_x64_sdk.bin --prefix /opt/intel
+
+RUN apt-get install -y \
+    libsgx-quote-ex=2.28.100.1-noble1 \
+    libsgx-urts=2.28.100.1-noble1 \
+    libsgx-dcap-ql=1.25.100.1-noble1 \
+    libsgx-dcap-quote-verify-dev=1.25.100.1-noble1 
+
+COPY . /gramine
+WORKDIR /gramine
+RUN meson setup build/ --buildtype=debug -Ddirect=enabled -Dsgx=enabled -Ddcap=enabled -Dtests=enabled --werror 
+
+RUN chmod +x /gramine/subprojects/mbedtls-3.6.3/compile.sh
+RUN ninja -C build/
+RUN ninja -C build/ install
+RUN chmod +x /usr/local/bin/gramine-manifest
+RUN chmod +x /usr/local/bin/gramine-manifest-check
+RUN chmod +x /usr/local/bin/gramine-sgx-sign
+RUN chmod +x /usr/local/bin/gramine-sgx-gen-private-key
+RUN chmod +x /usr/local/bin/gramine-test
+
+RUN gramine-sgx-gen-private-key -f
+WORKDIR /gramine/libos/test/regression
+ENTRYPOINT [ "gramine-test" ]
+CMD ["--sgx", "pytest", "-v", "-k", "test_054_sealed_file_tcb_migration"]
